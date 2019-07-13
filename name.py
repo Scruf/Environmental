@@ -1,33 +1,38 @@
-import json, os
-from datetime import datetime
+import json, os, time
+from datetime import datetime, date, timezone
 from requests import get
-from geopy.geocoders import Nominatim
+from dateutil.rrule import rrule, DAILY
+from geocoder import arcgis
 
 
 
 def get_darksky_response(url, _date):
+    print(url)
     requests =  get(url)
     if requests.status_code == 200:
         data = requests.json()["hourly"]
+        ts = int(_date)
+        _time = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
         date_json = {
-            _date:{}
+            str(_time):{}
         }
 
         for timestamp in data["data"]:
-            date_json[_date].update({
-                timestamp["time"]:{
+            _timestamptime = datetime.utcfromtimestamp(int(timestamp["time"])).strftime("%Y-%m-%d %H:%M:%S")
+            date_json[str(_time)].update({
+               _timestamptime:{
                     "temperature":timestamp["temperature"],
                     "dewPoint":timestamp["dewPoint"],
                     "humidity":timestamp["humidity"]
                 }
             })
-        with open("sample.json", "w") as fp:
-            json.dump(date_json, fp)
+        return date_json
 
     else:
         print(requests.text)
+        return {}
 
-geolocator = Nominatim(user_agent="specify_your_app_name_here")
+
 key = "689904ed285f890e88c17672dfe9b706"
 
 
@@ -40,30 +45,39 @@ with open('Invalid.json', 'r') as fil:
 
 locationArr = []
 for country in regions:
+    time.sleep(2)
     # print(country.keys())
     if country["Region"]:
         for region in country["Region"]:
-            geocode = geolocator.geocode(region)
+            geocode = arcgis(region).latlng
             if geocode:
                 locationArr.append({
                     "Location": region,
-                    "lat"     : geocode.latitude,
-                    "lon"     : geocode.longitude
+                    "lat"     : geocode[0],
+                    "lon"     : geocode[1]
                 })
     else:
-        geocode = geolocator.geocode(country)
-        if geocode:
-            locationArr.append({
-                "Location": country,
-                "lat"     : geocode.latitude,
-                "lon"     : geocode.longitude
-            })
+        try:
+            geocode = arcgis(country).latlng
+            if geocode:
+                locationArr.append({
+                    "Location": country,
+                    "lat"     : geocode[0],
+                    "lon"     : geocode[1]
+                })
+        except Exception as ex:
+            pass
 
-url = f'https://api.darksky.net/forecast/{key}'
 
+start_date = date(2018,1,1)
+end_date = date(2018,12,31)
 
-test_time = '1544270400'
-
-test_location = locationArr[0]
-
-get_darksky_response(url=api_url(key, test_location["lat"], test_location["lon"], test_time), _date=test_time)
+bigFile = []
+for dt in rrule(DAILY, dtstart=start_date, until=end_date):
+    _timestamp = dt.replace(tzinfo=timezone.utc).timestamp()
+    for region in locationArr:
+        print(_timestamp, region["Location"])
+        darksky_response = get_darksky_response(url=api_url(key, region["lat"], region["lon"], _timestamp), _date=_timestamp)
+        bigFile.append(darksky_response)
+with open("Sample.json", "w") as fil:
+    json.dump(bigFile, fil)
